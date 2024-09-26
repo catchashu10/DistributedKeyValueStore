@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package kvstore;
+
+// The KeyValue service definition.
+service KeyValue {
+    // Sends a request to set a key-value pair
+    rpc Set(KeyValuePair) returns (SetResponse);
+
+    // Sends a request to get a value by key
+    rpc Get(KeyRequest) returns (ValueResponse);
+}
+
+// The request message containing the key-value pair.
+message KeyValuePair {
+    string key = 1;
+    string value = 2;
+}
+
+// The request message containing the key.
+message KeyRequest {
+    string key = 1;
+}
+
+// The response message containing the success status.
+message SetResponse {
+    bool success = 1;
+}
+
+// The response message containing the value.
+message ValueResponse {
+    string value = 1;
+}

@@ -3,7 +3,7 @@ use tonic::{transport::Server, Request, Response, Status};
 use moka::future::Cache;
 
 use datastore::data_store_server::{DataStore, DataStoreServer};
-use datastore::{GetRequest, GetResponse, PutRequest, PutResponse};
+use datastore::{InitRequest, InitResponse, GetRequest, GetResponse, PutRequest, PutResponse, ShutdownResponse};
 
 use sqlite::KeyValueDataStore;
 
@@ -19,6 +19,20 @@ pub struct KeyValueServer {
 
 #[tonic::async_trait]
 impl DataStore for KeyValueServer {
+    async fn init(
+        &self,
+        _request: Request<InitRequest>
+    ) -> Result<Response<InitResponse>, Status> {
+        Ok(Response::new(InitResponse {success: true}))
+    }
+
+    async fn shutdown(
+        &self,
+        _request: Request<()>
+    ) -> Result<Response<ShutdownResponse>, Status> {
+        Ok(Response::new(ShutdownResponse {success: true}))
+    }
+
     async fn get(
         &self, 
         request: Request<GetRequest>

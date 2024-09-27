@@ -3,7 +3,7 @@ syntax = "proto3";
 package datastore;
 
 service DataStore {
-  rpc Init(InitRequest) return (InitResponse);
+  rpc Init(InitRequest) returns (InitResponse);
   rpc Shutdown(google.protobuf.Empty) returns (ShutdownResponse);
   rpc Get (GetRequest) returns (GetResponse);
   rpc Put (PutRequest) returns (PutResponse);
@@ -28,7 +28,7 @@ message PutResponse {
 }
 
 message InitRequest {
-  string server_name;
+  string server_name = 1;
 }
 
 message InitResponse {

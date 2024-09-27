@@ -1,5 +1,6 @@
 #include "kvstore.grpc.pb.h"
 #include <grpcpp/grpcpp.h>
+#include "database_ops.h"
 
 using grpc::Server;
 using grpc::ServerBuilder;

@@ -1,5 +1,7 @@
 #include "database_ops.h"
 #include <iostream>
+#include <string>
+using namespace std;
 
 sqlite3* db;
 char* errMsg = nullptr;
@@ -50,3 +52,14 @@ std::string getKeyValue(const std::string& key) {
     sqlite3_finalize(stmt);
     return value;
 }
+
+
+// int main() {
+//     string key = "Ashu";
+//     string value = "Kumar";
+
+//     initDB();
+//     setKeyValue(key, value);
+
+//     cout<<getKeyValue(key)<<endl;
+// }

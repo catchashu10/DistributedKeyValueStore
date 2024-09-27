@@ -4,7 +4,7 @@ package datastore;
 
 service DataStore {
   rpc Init(InitRequest) return (InitResponse);
-  rpc Shutdown(google.protobuf.Empty) return (ShutdownResponse);
+  rpc Shutdown(google.protobuf.Empty) returns (ShutdownResponse);
   rpc Get (GetRequest) returns (GetResponse);
   rpc Put (PutRequest) returns (PutResponse);
 }

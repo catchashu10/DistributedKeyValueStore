@@ -1,0 +1,2 @@
+/usr/bin/ar qc libdatabase_ops_lib.a CMakeFiles/database_ops_lib.dir/database_ops.cc.o
+/usr/bin/ranlib libdatabase_ops_lib.a

@@ -2,80 +2,69 @@ cmake_minimum_required(VERSION 3.8)
 
 project(KeyValueStoreServer C CXX)
 
-# C++ standard
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+include("${CMAKE_CURRENT_SOURCE_DIR}/common.cmake")
 
-# Include and link directories for Abseil
-include_directories($HOME/.local/include)
-link_directories($HOME/.local/lib)
-
-# Find required packages
+# Find absl package
+find_package(absl CONFIG REQUIRED)
 find_package(SQLite3 REQUIRED)
-find_package(Protobuf REQUIRED)
-find_package(gRPC REQUIRED)
-find_package(absl REQUIRED)
 
 # Proto file
-get_filename_component(project_path "../DistributedKeyValueStore" ABSOLUTE)
-get_filename_component(kv_proto "${project_path}/kvstore.proto" ABSOLUTE)
+get_filename_component(kvs_proto "./keyvaluestore.proto" ABSOLUTE)
+get_filename_component(kvs_proto_path "${kvs_proto}" PATH)
 
 # Generated sources
-set(GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
-file(MAKE_DIRECTORY ${GENERATED_DIR})
-include_directories(${GENERATED_DIR})
+set(kvs_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/keyvaluestore.pb.cc")
+set(kvs_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/keyvaluestore.pb.h")
+set(kvs_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/keyvaluestore.grpc.pb.cc")
+set(kvs_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/keyvaluestore.grpc.pb.h")
 
-set(GRPC_GENERATED_SOURCES
-    ${GENERATED_DIR}/kvstore.pb.cc
-    ${GENERATED_DIR}/kvstore.pb.h
-    ${GENERATED_DIR}/kvstore.grpc.pb.cc
-    ${GENERATED_DIR}/kvstore.grpc.pb.h
-)
-
-# Generate source files
 add_custom_command(
-    OUTPUT ${GRPC_GENERATED_SOURCES}
-    COMMAND ${PROTOBUF_PROTOC_EXECUTABLE}
-    ARGS --grpc_out ${GENERATED_DIR}
-         --cpp_out ${GENERATED_DIR}
-         -I ${project_path}
-         --plugin=protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>
-         ${kv_proto}
-    DEPENDS ${kv_proto}
-    COMMENT "Generating gRPC sources"
-)
+    OUTPUT "${kvs_proto_srcs}" "${kvs_proto_hdrs}" "${kvs_grpc_srcs}" "${kvs_grpc_hdrs}"
+    COMMAND ${_PROTOBUF_PROTOC}
+    ARGS --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
+    --cpp_out "${CMAKE_CURRENT_BINARY_DIR}"
+    -I "${kvs_proto_path}"
+    --plugin=protoc-gen-grpc="${_GRPC_CPP_PLUGIN_EXECUTABLE}"
+    "${kvs_proto}"
+    DEPENDS "${kvs_proto}")
 
 # Include generated *.pb.h files
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
-# gRPC and protobuf libraries
-set(_REFLECTION gRPC::grpc++_reflection)
-set(_PROTOBUF_LIBPROTOBUF protobuf::libprotobuf)
-set(_GRPC_GRPCPP gRPC::grpc++)
-
-# kv_grpc_proto library
-add_library(kv_grpc_proto ${GRPC_GENERATED_SOURCES})
-target_link_libraries(kv_grpc_proto
+# kvs_grpc_proto
+add_library(kvs_grpc_proto
+  ${kvs_grpc_srcs}
+  ${kvs_grpc_hdrs}
+  ${kvs_proto_srcs}
+  ${kvs_proto_hdrs})
+target_link_libraries(kvs_grpc_proto
+  absl::absl_log
   ${_REFLECTION}
   ${_GRPC_GRPCPP}
-  ${_PROTOBUF_LIBPROTOBUF}
+  ${_PROTOBUF_LIBPROTOBUF})
+
+# Add the database_ops as a library
+add_library(database_ops_lib
+"database_ops.cc")
+
+target_link_libraries(database_ops_lib
   SQLite::SQLite3
-  absl::strings
-  absl::synchronization
-  absl::time
-  absl::check
 )
 
-# Target server
-add_executable(kv_server "grpc_server.cpp" "database_ops.cpp")
-target_link_libraries(kv_server
-  kv_grpc_proto
-  ${_REFLECTION}
-  ${_GRPC_GRPCPP}
-  ${_PROTOBUF_LIBPROTOBUF}
-  SQLite::SQLite3
-  absl::strings
-  absl::synchronization
-  absl::time
-  absl::check
-)
+# Targets grpc_server and databsae_ops
+foreach(_target
+grpc_server)
+  add_executable(${_target}
+    "${_target}.cc")
+  target_link_libraries(${_target}
+    kvs_grpc_proto
+    database_ops_lib
+    SQLite::SQLite3
+    absl::flags_parse
+    absl::absl_log
+    absl::log_initialize
+    absl::log_globals
+    ${_REFLECTION}
+    ${_GRPC_GRPCPP}
+    ${_PROTOBUF_LIBPROTOBUF})
+endforeach()

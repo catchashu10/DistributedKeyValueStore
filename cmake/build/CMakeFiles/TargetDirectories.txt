@@ -1,0 +1,5 @@
+/home/catchashu10/DistributedKeyValueStore/cmake/build/CMakeFiles/kvs_grpc_proto.dir
+/home/catchashu10/DistributedKeyValueStore/cmake/build/CMakeFiles/database_ops_lib.dir
+/home/catchashu10/DistributedKeyValueStore/cmake/build/CMakeFiles/grpc_server.dir
+/home/catchashu10/DistributedKeyValueStore/cmake/build/CMakeFiles/edit_cache.dir
+/home/catchashu10/DistributedKeyValueStore/cmake/build/CMakeFiles/rebuild_cache.dir

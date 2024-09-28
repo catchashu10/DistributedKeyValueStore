@@ -2,12 +2,12 @@ use clap::Parser;
 
 use tonic::{transport::Server, Request, Response, Status};
 
-use datastore::data_store_server::{DataStore, DataStoreServer};
-use datastore::{InitRequest, InitResponse, GetRequest, GetResponse, PutRequest, PutResponse, ShutdownResponse};
+use keyvaluestore::key_value_store_server::{KeyValueStore, KeyValueStoreServer};
+use keyvaluestore::{InitRequest, InitResponse, GetRequest, GetResponse, PutRequest, PutResponse, ShutdownResponse};
 
 use sqlite::KeyValueDataStore;
 
-mod datastore;
+mod keyvaluestore;
 mod sqlite;
 
 #[derive(Parser)]
@@ -21,7 +21,7 @@ pub struct KeyValueServer {
 }
 
 #[tonic::async_trait]
-impl DataStore for KeyValueServer {
+impl KeyValueStore for KeyValueServer {
     async fn init(
         &self,
         _request: Request<InitRequest>
@@ -56,7 +56,7 @@ impl DataStore for KeyValueServer {
         let PutRequest { key, value } = request.into_inner();
 
         match self.db.put(&key, &value) {
-            Ok(old_value) => Ok(Response::new(PutResponse { value: old_value })),
+            Ok(old_value) => Ok(Response::new(PutResponse { old_value, found_key: true })),
             Err(e) => Err(Status::internal(format!("DB error: {}", e))),
         }
     }
@@ -69,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = KeyValueDataStore::new("kv_store.db").expect("Failed to create datastore");
 
     let store = KeyValueServer { db };
-    let server = DataStoreServer::new(store);
+    let server = KeyValueStoreServer::new(store);
     println!("Starting gRPC server on {}", addr);
 
     Server::builder()

@@ -26,6 +26,7 @@ impl KeyValueStore for KeyValueServer {
         &self,
         _request: Request<InitRequest>
     ) -> Result<Response<InitResponse>, Status> {
+        println!("Hello world server: ");
         Ok(Response::new(InitResponse {success: true}))
     }
 
@@ -43,8 +44,8 @@ impl KeyValueStore for KeyValueServer {
         let key = request.into_inner().key;
 
         match self.db.get(&key) {
-            Ok(Some(value)) => Ok(Response::new(GetResponse { value, found: true })),
-            Ok(None) => Ok(Response::new(GetResponse { value: "".to_string(), found: false })),
+            Ok(Some(value)) => Ok(Response::new(GetResponse { value, found_key: true })),
+            Ok(None) => Ok(Response::new(GetResponse { value: "".to_string(), found_key: false })),
             Err(e) => Err(Status::internal(format!("DB error: {}", e))),
         }
     }

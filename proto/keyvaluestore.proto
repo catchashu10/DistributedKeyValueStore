@@ -16,7 +16,7 @@ message GetRequest {
 
 message GetResponse {
   string value = 1;
-  bool found = 2;
+  bool found_key = 2;
 }
 
 message PutRequest {

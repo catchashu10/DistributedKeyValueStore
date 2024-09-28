@@ -52,19 +52,8 @@ target_link_libraries(database_ops_lib
 )
 
 # Targets grpc_server and databsae_ops
-foreach(_target
-grpc_server)
-  add_executable(${_target}
-    "${_target}.cc")
-  target_link_libraries(${_target}
+add_executable(grpc_server "grpc_server.cc")
+
+target_link_libraries(grpc_server
     kvs_grpc_proto
-    database_ops_lib
-    SQLite::SQLite3
-    absl::flags_parse
-    absl::absl_log
-    absl::log_initialize
-    absl::log_globals
-    ${_REFLECTION}
-    ${_GRPC_GRPCPP}
-    ${_PROTOBUF_LIBPROTOBUF})
-endforeach()
+    database_ops_lib)

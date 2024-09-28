@@ -3,83 +3,113 @@
 #include <string>
 #include <grpcpp/grpcpp.h>
 #include "keyvaluestore.grpc.pb.h"
-#include "database_ops.h" // Assuming this file has the DB logic for get and put
+#include "database_ops.h"
 
 using grpc::Server;
 using grpc::ServerBuilder;
 using grpc::ServerContext;
+using grpc::ServerReaderWriter;
 using grpc::Status;
-using google::protobuf::Empty;
-using keyvaluestore::KeyValueStore;
-using keyvaluestore::InitRequest;
-using keyvaluestore::InitResponse;
-using keyvaluestore::ShutdownResponse;
+using keyvaluestore::ClientRequest;
 using keyvaluestore::GetRequest;
 using keyvaluestore::GetResponse;
+using keyvaluestore::InitRequest;
+using keyvaluestore::InitResponse;
+using keyvaluestore::KeyValueStore;
 using keyvaluestore::PutRequest;
 using keyvaluestore::PutResponse;
+using keyvaluestore::ServerResponse;
+using keyvaluestore::ShutdownRequest;
+using keyvaluestore::ShutdownResponse;
 
 // Logic and data behind the server's behavior.
-class KeyValueStoreServiceImpl final : public KeyValueStore::Service {
+class KeyValueStoreServiceImpl final : public KeyValueStore::Service
+{
 public:
-    // Initialize the server
-    Status init(ServerContext* context, const InitRequest* request, InitResponse* reply) override {
-        std::string server_name = request->server_name();
-        // Assuming some initialization logic here
-        std::cout << "Initializing server: " << server_name << std::endl;
-        initDB(); // Initialize your database or other necessary components
-        reply->set_success(true); // Set success to true after initialization
-        return Status::OK;
-    }
+    // Manage bidirectional streaming sessions
+    Status manage_session(ServerContext *context, ServerReaderWriter<ServerResponse, ClientRequest> *stream) override
+    {
+        ClientRequest client_request;
 
-    // Shut down the server
-    Status shutdown(ServerContext* context, const Empty* request, ShutdownResponse* reply) override {
-        // Assuming some shutdown logic here
-        std::cout << "Shutting down the server." << std::endl;
-        // closeDB(); // Shutdown/close your database
-        reply->set_success(true); // Set success to true after shutdown
-        return Status::OK;
-    }
+        while (stream->Read(&client_request))
+        {
+            // Prepare the server response
+            ServerResponse server_response;
 
-    // Handle Get requests
-    Status get(ServerContext* context, const GetRequest* request, GetResponse* reply) override {
-        std::string key = request->key();
-        std::string value = getKeyValue(key); // getKeyValue from your database logic
-        if (!value.empty()) {
-            reply->set_value(value);
-            reply->set_key_found(true);
-            std::cout << "Get key: " << key << ", value: " << value << std::endl;
-        } else {
-            std::cout << "Get key: " << key << " Not found!" << std::endl;
-            reply->set_key_found(false);
+            // Handle init request
+            if (client_request.has_init_request())
+            {
+                InitRequest init_req = client_request.init_request();
+                std::cout << "Received InitRequest for server: " << init_req.server_name() << std::endl;
+                InitResponse init_resp;
+                initDB(); // Initialize database or other logic
+                init_resp.set_success(true);
+                *server_response.mutable_init_response() = init_resp;
+            }
+
+            // Handle get request
+            else if (client_request.has_get_request())
+            {
+                GetRequest get_req = client_request.get_request();
+                std::cout << "Received GetRequest for key: " << get_req.key() << std::endl;
+                GetResponse get_resp;
+                std::string value = getKeyValue(get_req.key()); // Fetch value from the database
+                if (!value.empty())
+                {
+                    get_resp.set_value(value);
+                    get_resp.set_key_found(true);
+                }
+                else
+                {
+                    get_resp.set_key_found(false);
+                }
+                *server_response.mutable_get_response() = get_resp;
+            }
+
+            // Handle put request
+            else if (client_request.has_put_request())
+            {
+                PutRequest put_req = client_request.put_request();
+                std::cout << "Received PutRequest for key: " << put_req.key() << std::endl;
+                PutResponse put_resp;
+                std::string old_value = getKeyValue(put_req.key()); // Fetch old value if it exists
+                if (!old_value.empty())
+                {
+                    put_resp.set_old_value(old_value);
+                    put_resp.set_key_found(true);
+                }
+                else
+                {
+                    put_resp.set_key_found(false);
+                }
+                setKeyValue(put_req.key(), put_req.value()); // Set new key-value pair in database
+                *server_response.mutable_put_response() = put_resp;
+            }
+
+            // Handle shutdown request
+            else if (client_request.has_shutdown_request())
+            {
+                std::cout << "Received ShutdownRequest" << std::endl;
+                ShutdownResponse shutdown_resp;
+                // closeDB(); // Clean up or close the database
+                shutdown_resp.set_success(true);
+                *server_response.mutable_shutdown_response() = shutdown_resp;
+                stream->Write(server_response); // Send shutdown response before closing
+                break;                          // Exit the loop after shutdown
+            }
+
+            // Write response to the client
+            stream->Write(server_response);
         }
-        return Status::OK;
-    }
 
-    // Handle Put requests
-    Status put(ServerContext* context, const PutRequest* request, PutResponse* reply) override {
-        std::string key = request->key();
-        std::string value = request->value();
-        std::string old_value = getKeyValue(key); // get old value first
-        if (!old_value.empty()) {
-            reply->set_old_value(old_value);
-            reply->set_key_found(true);
-            std::cout << "Put key: " << key << ", value: " << value <<", old_value: " << old_value << std::endl;
-        } else {
-            std::cout << "Get key: " << key << " Not found!" << std::endl;
-            reply->set_key_found(false);
-        }
-        setKeyValue(key, value); // set the new key-value pair in your database
         return Status::OK;
     }
 };
 
-
 void RunServer()
 {
-    initDB();
     std::string server_address("0.0.0.0:50051");
-    KeyValueStoreServiceImpl  service;
+    KeyValueStoreServiceImpl service;
 
     ServerBuilder builder;
     // Listen on the given address without any authentication mechanism.

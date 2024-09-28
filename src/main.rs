@@ -1,9 +1,14 @@
 use clap::Parser;
+use std::sync::Arc;
 
+use tokio::sync::mpsc;
 use tonic::{transport::Server, Request, Response, Status};
 
 use keyvaluestore::key_value_store_server::{KeyValueStore, KeyValueStoreServer};
-use keyvaluestore::{InitRequest, InitResponse, GetRequest, GetResponse, PutRequest, PutResponse, ShutdownResponse};
+use keyvaluestore::{ClientRequest, ServerResponse};
+
+use keyvaluestore::server_response::Response::{InitResponse, ShutdownResponse, GetResponse, PutResponse};
+use keyvaluestore::client_request::Request::{InitRequest, ShutdownRequest, GetRequest, PutRequest};
 
 use sqlite::KeyValueDataStore;
 
@@ -17,48 +22,104 @@ struct Args {
 }
 
 pub struct KeyValueServer {
-    db: KeyValueDataStore,
+    db: Arc<KeyValueDataStore>,
 }
 
 #[tonic::async_trait]
+#[allow(non_camel_case_types)]
 impl KeyValueStore for KeyValueServer {
-    async fn init(
+    type manage_sessionStream = mpsc::Receiver<Result<ServerResponse, Status>>;
+    async fn manage_session(
         &self,
-        _request: Request<InitRequest>
-    ) -> Result<Response<InitResponse>, Status> {
-        Ok(Response::new(InitResponse {success: true}))
-    }
+        request: Request<tonic::Streaming<ClientRequest>>,
+    ) -> Result<Response<Self::manage_sessionStream>, Status> {
+        let mut streamer = request.into_inner();
+        // creating queue
+        let (mut tx, rx) = mpsc::channel(4);
+        let db = self.db.clone(); // cloning db to move into the stream
 
-    async fn shutdown(
-        &self,
-        _request: Request<()>
-    ) -> Result<Response<ShutdownResponse>, Status> {
-        Ok(Response::new(ShutdownResponse {success: true}))
-    }
+        tokio::spawn(async move {
+            let mut session_active = false;
+            // listening on request stream
+            while let Some(req) = streamer.message().await.unwrap(){
+                match req.request.unwrap() {
+                    InitRequest(_init_req) => {
+                        session_active = true;
 
-    async fn get(
-        &self, 
-        request: Request<GetRequest>
-    ) -> Result<Response<GetResponse>, Status> {
-        let key = request.into_inner().key;
+                        // Send InitResponse
+                        let response = ServerResponse {
+                            response: Some(InitResponse(keyvaluestore::InitResponse {
+                                success: true,
+                            })),
+                        };
 
-        match self.db.get(&key) {
-            Ok(Some(value)) => Ok(Response::new(GetResponse { value, found: true })),
-            Ok(None) => Ok(Response::new(GetResponse { value: "".to_string(), found: false })),
-            Err(e) => Err(Status::internal(format!("DB error: {}", e))),
-        }
-    }
+                        if let Err(e) = tx.send(Ok(response)).await {
+                            eprintln!("Error sending init response: {:?}", e);
+                        }
+                    }
 
-    async fn put(
-        &self, 
-        request: Request<PutRequest>
-    ) -> Result<Response<PutResponse>, Status> {
-        let PutRequest { key, value } = request.into_inner();
+                    GetRequest(get_req) => {
+                        if session_active {
+                            let value = db.get(&get_req.key).unwrap_or(None);
 
-        match self.db.put(&key, &value) {
-            Ok(old_value) => Ok(Response::new(PutResponse { old_value, found_key: true })),
-            Err(e) => Err(Status::internal(format!("DB error: {}", e))),
-        }
+                            let response = match value {
+                                Some(v) => ServerResponse {
+                                    response: Some(GetResponse(keyvaluestore::GetResponse {
+                                        value: v,
+                                        key_found: true,
+                                    })),
+                                },
+                                None => ServerResponse {
+                                    response: Some(GetResponse(keyvaluestore::GetResponse {
+                                        value: String::new(),
+                                        key_found: false,
+                                    })),
+                                },
+                            };
+
+                            if let Err(e) = tx.send(Ok(response)).await {
+                                eprintln!("Error sending get response: {:?}", e);
+                            }
+                        }
+                    }
+
+                    PutRequest(put_req) => {
+                        if session_active {
+                            let old_value = db.put(&put_req.key.clone(), &put_req.value.clone());
+                            let key_found = old_value.is_ok();
+                            let response = ServerResponse {
+                                response: Some(PutResponse(keyvaluestore::PutResponse {
+                                    old_value: old_value.unwrap_or(String::new()),
+                                    key_found,
+                                })),
+                            };
+
+                            if let Err(e) = tx.send(Ok(response)).await {
+                                eprintln!("Error sending put response: {:?}", e);
+                            }
+                        }
+                    }
+
+                    ShutdownRequest(_) => {
+                        session_active = false;
+
+                        let response = ServerResponse {
+                            response: Some(ShutdownResponse(keyvaluestore::ShutdownResponse {
+                                success: true,
+                            })),
+                        };
+
+                        if let Err(e) = tx.send(Ok(response)).await {
+                            eprintln!("Error sending shutdown response: {:?}", e);
+                        }
+
+                        break;
+                    }
+                }
+            }
+        });
+        // returning stream as receiver
+        Ok(Response::new(rx))
     }
 }
 
@@ -66,7 +127,7 @@ impl KeyValueStore for KeyValueServer {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let addr = format!("[::]:{}", args.port).parse().unwrap();
-    let db = KeyValueDataStore::new("kv_store.db").expect("Failed to create datastore");
+    let db = Arc::new(KeyValueDataStore::new("kv_store.db").expect("Failed to create datastore"));
 
     let store = KeyValueServer { db };
     let server = KeyValueStoreServer::new(store);
